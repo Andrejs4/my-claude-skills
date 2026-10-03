@@ -7,5 +7,12 @@
     "description": "Andrejs Petrovs's own skills for Claude Code, usable across projects.",
     "version": "0.1.0"
   },
-  "plugins": []
+  "plugins": [
+    {
+      "name": "web-pixel-images",
+      "source": "./plugins/web-pixel-images",
+      "description": "Turn ordinary pictures into small, web-ready pixelated images with an old-game look, alone or in batches, and credit them.",
+      "version": "0.1.0"
+    }
+  ]
 }

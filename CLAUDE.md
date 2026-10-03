@@ -17,8 +17,9 @@ layout and how a plugin is added; this file covers the rest.
   may not need network access or secrets unless the skill says so up front.
 - Bump a plugin's `version` in `plugin.json` when it changes, so
   `/plugin marketplace update` picks it up.
-- Before committing: `claude plugin validate .` and
-  `claude plugin validate plugins/<plugin>` must pass (warnings are fine
-  while the marketplace is empty).
+- Before committing: `claude plugin validate --strict .` and
+  `claude plugin validate --strict plugins/<plugin>` must pass, and so must
+  `python3 -m unittest discover tests` (Python 3 with Pillow). A script gets
+  tests in `tests/`, made on pictures the tests draw themselves.
 - Licence: GPL-2.0-or-later (README, LICENSE). Put `"license":
   "GPL-2.0-or-later"` in each `plugin.json`.

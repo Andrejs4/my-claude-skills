@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "web-pixel-images",
+  "version": "0.1.0",
+  "description": "Turn ordinary pictures into small, web-ready pixelated images with an old-game look, alone or in batches, and credit them.",
+  "author": {
+    "name": "Andrejs Petrovs"
+  },
+  "license": "GPL-2.0-or-later",
+  "keywords": ["images", "pixel", "retro", "web", "sprites", "portraits"],
+  "skills": [
+    "./skills/"
+  ]
+}
