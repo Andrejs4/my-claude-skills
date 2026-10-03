@@ -1,0 +1,11 @@
+{
+  "name": "my-claude-skills",
+  "owner": {
+    "name": "Andrejs Petrovs"
+  },
+  "metadata": {
+    "description": "Andrejs Petrovs's own skills for Claude Code, usable across projects.",
+    "version": "0.1.0"
+  },
+  "plugins": []
+}
