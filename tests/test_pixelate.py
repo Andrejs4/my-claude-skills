@@ -84,6 +84,24 @@ class Pixelate(unittest.TestCase):
         self.assertEqual(run(src, '--out', self.dir / 'o', '--aspect', '1:1', '--grid', '8')['images'][0]['cropped_to'], [200, 200])
         self.assertEqual(run(src, '--out', self.dir / 'o', '--box', '10,20,100,50', '--grid', '8')['images'][0]['cropped_to'], [100, 50])
 
+    def test_zoom_frames_the_middle_around_the_focus(self):
+        src = picture(self.dir / 'a.png', size=(400, 400))
+        r = run(src, '--out', self.dir / 'o', '--zoom', '2', '--focus', '0.5,0.4', '--grid', '8')['images'][0]
+        self.assertEqual(r['cropped_to'], [200, 200])
+        r = run(src, '--out', self.dir / 'o', '--aspect', '2:1', '--zoom', '2', '--grid', '8')['images'][0]
+        self.assertEqual(r['cropped_to'], [200, 100])
+
+    def test_a_saved_palette_serves_the_next_batch(self):
+        for n in range(3):
+            picture(self.dir / f'f{n}.png', size=(120, 120), seed=n)
+        saved = self.dir / 'set.hex'
+        run(self.dir, '--out', self.dir / 'o', '--grid', '16', '--colors', '10', '--shared-palette', '--save-palette', saved)
+        colours = {tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) for h in saved.read_text().split()}
+        self.assertTrue(2 <= len(colours) <= 10)
+        later = picture(self.dir / 'later.png', size=(120, 120), seed=7)
+        out = load(run(later, '--out', self.dir / 'o2', '--grid', '16', '--palette', saved)['images'][0]['outputs'][0])
+        self.assertTrue({c for _, c in out.convert('RGB').getcolors()} <= colours)
+
     def test_automatic_grid_is_from_the_ladder_and_more_detail_is_finer(self):
         src = picture(self.dir / 'a.png', size=(800, 600))
         low = run(src, '--out', self.dir / 'o', '--detail', 'low')['images'][0]

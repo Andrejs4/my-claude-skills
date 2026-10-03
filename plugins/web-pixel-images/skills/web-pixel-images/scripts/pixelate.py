@@ -116,18 +116,21 @@ def inspect(path, im):
     }
 
 
-def crop(im, box=None, aspect=None, focus=(0.5, 0.5)):
-    """A box of the picture, or the largest part of it with the given aspect."""
+def crop(im, box=None, aspect=None, focus=(0.5, 0.5), zoom=1.0):
+    """A box of the picture; or the largest part of it with the given aspect,
+    then 1/zoom of that each way, both around the focus point. One --zoom
+    frames a whole batch of portraits made alike, with no box per picture."""
     if box:
         x, y, w, h = box
         return im.crop((x, y, min(x + w, im.width), min(y + h, im.height)))
-    if not aspect:
-        return im
     w, h = im.size
-    if w / h > aspect:
-        cw, ch = round(h * aspect), h
+    if aspect:
+        cw, ch = (round(h * aspect), h) if w / h > aspect else (w, round(w / aspect))
     else:
-        cw, ch = w, round(w / aspect)
+        cw, ch = w, h
+    cw, ch = max(1, round(cw / zoom)), max(1, round(ch / zoom))
+    if (cw, ch) == (w, h):
+        return im
     x = min(max(0, round(focus[0] * w - cw / 2)), w - cw)
     y = min(max(0, round(focus[1] * h - ch / 2)), h - ch)
     return im.crop((x, y, x + cw, y + ch))
@@ -289,6 +292,7 @@ def main(argv=None):
     shape = ap.add_argument_group('crop')
     shape.add_argument('--aspect', type=parse_aspect, help='crop to W:H first, such as 1:1 or 13:5')
     shape.add_argument('--focus', type=parse_focus, default=(0.5, 0.5), help='centre of an --aspect crop, as x,y from 0 to 1 (default 0.5,0.5)')
+    shape.add_argument('--zoom', type=float, default=1.0, help='keep the middle 1/ZOOM each way, around --focus (after --aspect): 1.6 frames a face in a head-and-shoulders portrait')
     shape.add_argument('--box', type=parse_box, help='crop to x,y,width,height in the picture\'s pixels')
     look = ap.add_argument_group('look')
     look.add_argument('--colors', type=int, default=32, help='palette size, 2 to 256 (default 32)')
@@ -296,6 +300,7 @@ def main(argv=None):
     look.add_argument('--dither', choices=['none', 'floyd'], default='none', help='blend colours with a dot pattern (default none)')
     look.add_argument('--shared-palette', action='store_true', help='one palette for all inputs, so a set looks alike')
     look.add_argument('--palette', help='use these colours: an image, or a text file of hex colours')
+    look.add_argument('--save-palette', help='write the colours used to this file (hex, one a line), to reuse with --palette for later pictures of the set')
     look.add_argument('--resample', choices=['lanczos', 'box'], default='lanczos', help='how pixels are averaged when shrinking: lanczos keeps edges sharper, box is smoother (default lanczos)')
     output = ap.add_argument_group('output')
     output.add_argument('--scale', type=int, default=1, help='also save each result scaled up this many times, for places without CSS scaling')
@@ -304,8 +309,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if not 2 <= args.colors <= 256:
         ap.error('--colors must be from 2 to 256')
-    if args.box and args.aspect:
-        ap.error('use --box or --aspect, not both')
+    if args.box and (args.aspect or args.zoom != 1.0):
+        ap.error('use --box, or --aspect and --zoom, not both')
+    if args.zoom < 1:
+        ap.error('--zoom must be 1 or more')
+    if args.save_palette and len(inputs_of(args.inputs)) > 1 and not (args.shared_palette or args.palette):
+        ap.error('--save-palette with several pictures needs --shared-palette (or --palette): else each has its own')
 
     files = inputs_of(args.inputs)
     out = Path(args.out)
@@ -319,7 +328,7 @@ def main(argv=None):
             info = inspect(f, raw)
             raw.seek(0)
             im = raw.convert('RGBA')
-        im = crop(im, args.box, args.aspect, args.focus)
+        im = crop(im, args.box, args.aspect, args.focus, args.zoom)
         aspect = im.width / im.height
         tried = None
         if args.grid:
@@ -375,6 +384,12 @@ def main(argv=None):
             'bytes': target.stat().st_size,
             'outputs': files_out,
         })
+    if args.save_palette:
+        used = set()
+        for job in jobs:
+            used |= {c[:3] for _, c in job['result'].convert('RGBA').getcolors(1 << 16) or [] if c[3] == 255}
+        lines = ['#%02x%02x%02x' % c for c in sorted(used, key=lambda c: (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2], c))]
+        Path(args.save_palette).write_text('\n'.join(lines) + '\n')
     sheet = None
     if mode == 'sheet':
         sheet = out / 'contact-sheet.png'
@@ -383,6 +398,7 @@ def main(argv=None):
         'settings': {'colors': args.colors, 'boost': args.boost, 'dither': args.dither, 'palette': 'shared' if palette is not None and not args.palette else args.palette,
                      'resample': args.resample, 'preview': mode},
         'contact_sheet': str(sheet) if sheet else None,
+        'palette_saved': args.save_palette,
         'images': report,
     }
     (out / 'report.json').write_text(json.dumps(summary, indent=2, ensure_ascii=False))

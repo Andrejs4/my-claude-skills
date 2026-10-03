@@ -14,8 +14,9 @@ The repository is a Claude Code plugin marketplace: each plugin under
   AI-generated images) into small, web-ready pixelated images with an
   old-game look. It crops, shrinks to a coarse grid of real pixels (a
   16 × 16 face, a 128-wide banner), limits the palette, strips metadata, and
-  saves tiny PNGs: a 16 × 16 face is about 300 bytes. Batches can share a
-  palette and get one contact sheet instead of a preview each. It also asks
+  saves tiny PNGs: a 32 × 32 face is about 550 bytes. A set (hero faces,
+  icons) gets one framing and one small palette, saved for later
+  additions, and one contact sheet instead of a preview each. It also asks
   which licence applies and adds credit lines. Needs Python 3 with Pillow.
   Ask Claude to "pixelate this image for the web", or for "16 × 16 pixel
   portraits of these faces".
