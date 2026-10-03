@@ -20,7 +20,10 @@ The repository is a Claude Code plugin marketplace: each plugin under
   (64 faces in about 22 KB), and makes one contact sheet instead of a
   preview each. The face detector is
   [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)
-  (MIT licence, in the skill's `models/`), run with OpenCV. It also asks
+  (MIT licence, in the skill's `models/`), run with OpenCV. It can also put
+  every picture on one flat background, cutting the subjects out with
+  [rembg](https://github.com/danielgatis/rembg) (MIT licence; its model
+  downloads on first use). It also asks
   which licence applies and adds credit lines. Needs Python 3 with Pillow.
   Ask Claude to "pixelate this image for the web", or for "16 × 16 pixel
   portraits of these faces".

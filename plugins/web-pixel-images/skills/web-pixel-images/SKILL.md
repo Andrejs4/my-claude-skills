@@ -17,6 +17,9 @@ this skill's folder, does the work.
    (it needs the network; if there is none, say so and stop). Framing
    around faces (`--frame face`) also needs OpenCV:
    `pip install opencv-python-headless`; the face model comes with this skill.
+   Replacing backgrounds (`--background`) needs rembg:
+   `pip install "rembg[cpu]"`. Its model (180 MB) downloads on first use, so
+   that needs the network once.
 2. **Ask only what's missing, once.**
    - **The grid** (size in real pixels), if the person has one in mind. To
      start from, as old games did: a face 8 × 8 (an icon) to 16 × 16 (a
@@ -59,6 +62,12 @@ this skill's folder, does the work.
      person wants that look, best with `--dither floyd`.
    - For portraits shown small (32–64 px on screen), a 32 × 32 grid is a
      good start.
+   - Different backgrounds (grey, parchment, sky, watercolour) split a set.
+     `--background '#6e6e6e'` cuts out each subject (rembg, on the whole
+     picture) and puts it on one flat colour, about 1 s a picture. A mid
+     grey hides the cut-out's flaws best. `--background transparent` lets the
+     page put any colour behind, but dark hair and beards can get holes that
+     show through as specks.
    - `--atlas 8x8` also packs the results, in file-name order, into one
      sprite sheet (`atlas.png`), with each cell's place in the report: one
      request for the page instead of 64. 64 faces of 32 × 32 come to about
@@ -136,6 +145,8 @@ fits) for a copy already scaled up by whole pixels.
 - `--frame face`, `--face-fill F`; `--crops FILE` (boxes per picture, JSON).
 - `--atlas COLSxROWS`: a sprite sheet of the results.
 - `--colors N` (2–256, default 32).
+- `--background '#rrggbb' | transparent`, `--bg-model` (default
+  isnet-general-use; u2netp is 5 MB but loses bodies and hoods).
 - `--boost none|mild|strong` (default mild): colour and contrast after
   shrinking, which averages colours toward mud.
 - `--dither none|floyd`.
