@@ -133,6 +133,28 @@ class Pixelate(unittest.TestCase):
         self.assertEqual(r['framed'], 'no face found: centre')
         self.assertEqual(r['cropped_to'], [200, 200])
 
+    def test_background_is_replaced_by_a_colour_or_cleared(self):
+        # A stand-in for rembg: the left half is background.
+        def fake_remover(model):
+            def cut(im):
+                out = im.convert('RGBA')
+                mask = Image.new('L', im.size, 255)
+                ImageDraw.Draw(mask).rectangle([0, 0, im.width // 2 - 1, im.height], fill=0)
+                out.putalpha(mask)
+                return out
+            return cut
+        real = pixelate.background_remover
+        pixelate.background_remover = fake_remover
+        try:
+            src = picture(self.dir / 'a.png', size=(200, 200))
+            grey = load(run(src, '--out', self.dir / 'g', '--grid', '10', '--background', '#6e6e6e')['images'][0]['outputs'][0])
+            self.assertEqual(grey.convert('RGB').getpixel((1, 5)), (0x6e, 0x6e, 0x6e))
+            clear = load(run(src, '--out', self.dir / 'c', '--grid', '10', '--background', 'transparent')['images'][0]['outputs'][0])
+            self.assertEqual(clear.convert('RGBA').getpixel((1, 5))[3], 0)
+            self.assertEqual(clear.convert('RGBA').getpixel((8, 5))[3], 255)
+        finally:
+            pixelate.background_remover = real
+
     def test_automatic_grid_is_from_the_ladder_and_more_detail_is_finer(self):
         src = picture(self.dir / 'a.png', size=(800, 600))
         low = run(src, '--out', self.dir / 'o', '--detail', 'low')['images'][0]

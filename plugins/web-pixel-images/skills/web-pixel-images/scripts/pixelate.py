@@ -170,6 +170,31 @@ def face_detector():
     return find
 
 
+def background_remover(model):
+    """A function giving a picture its subject alone, on transparency. Needs
+    rembg; its model is downloaded on first use (isnet-general-use: 180 MB,
+    kept in ~/.u2net, or $U2NET_HOME)."""
+    os.environ.setdefault('OMP_NUM_THREADS', str(os.cpu_count() or 1))
+    try:
+        from rembg import new_session, remove
+    except ImportError:
+        sys.exit('--background needs rembg: pip install "rembg[cpu]"')
+    session = new_session(model)
+
+    def cut(im):
+        return remove(im.convert('RGB'), session=session).convert('RGBA')
+    return cut
+
+
+def parse_background(text):
+    if text == 'transparent':
+        return text
+    m = re.fullmatch(r'#?([0-9a-fA-F]{6})', text.strip())
+    if not m:
+        raise argparse.ArgumentTypeError(f'not a colour: {text!r} (use #rrggbb or transparent)')
+    return tuple(int(m.group(1)[i:i + 2], 16) for i in (0, 2, 4))
+
+
 def around_face(face, size, aspect, fill):
     """A box around a face: the face's larger side is `fill` of the box's
     width, and the box sits a little low, for chin and beard; kept inside the
@@ -404,6 +429,9 @@ def main(argv=None):
     shape.add_argument('--crops', help='a JSON file of boxes per picture, {"name.png": [x, y, w, h]}, used before any other framing; each run writes the boxes it used to OUT/crops.json')
     look = ap.add_argument_group('look')
     look.add_argument('--colors', type=int, default=32, help='palette size, 2 to 256 (default 32)')
+    look.add_argument('--background', type=parse_background,
+                      help='replace the background: a colour (#787878) or transparent; needs rembg, and downloads its model (180 MB) on first use')
+    look.add_argument('--bg-model', default='isnet-general-use', help='rembg model for --background (default isnet-general-use; u2netp is 5 MB but cruder)')
     look.add_argument('--boost', choices=BOOST, default='mild', help='lift colour and contrast after shrinking: none keeps them true, strong gives old games\' pop (default mild)')
     look.add_argument('--dither', choices=['none', 'floyd'], default='none', help='blend colours with a dot pattern (default none)')
     look.add_argument('--shared-palette', action='store_true', help='one palette for all inputs, so a set looks alike')
@@ -438,6 +466,7 @@ def main(argv=None):
     if args.crops:
         crops = json.loads(Path(args.crops).read_text())
     find_face = face_detector() if args.frame == 'face' else None
+    cut_out = background_remover(args.bg_model) if args.background else None
 
     # First pass: crop, read and size each picture.
     jobs = []
@@ -460,6 +489,15 @@ def main(argv=None):
         if not box:
             box = centre_box(source.size, args.aspect, args.focus, args.zoom)
             framed = framed or ('centre' if (args.aspect or args.zoom != 1.0) else 'whole')
+        if cut_out:
+            # On the whole picture, which the model reads better than a crop.
+            subject = cut_out(source)
+            if args.background == 'transparent':
+                source = subject
+            else:
+                flat = Image.new('RGBA', source.size, (*args.background, 255))
+                flat.alpha_composite(subject)
+                source = flat
         im = crop(source, box)
         aspect = im.width / im.height
         tried = None
@@ -537,7 +575,8 @@ def main(argv=None):
         if len(jobs) > args.atlas[0] * args.atlas[1]:
             print(f'note: {len(jobs)} pictures, but the atlas holds {args.atlas[0] * args.atlas[1]}', file=sys.stderr)
     summary = {
-        'settings': {'colors': args.colors, 'boost': args.boost, 'dither': args.dither, 'palette': 'shared' if palette is not None and not args.palette else args.palette,
+        'settings': {'colors': args.colors, 'boost': args.boost, 'dither': args.dither,
+                     'background': ('#%02x%02x%02x' % args.background if isinstance(args.background, tuple) else args.background), 'palette': 'shared' if palette is not None and not args.palette else args.palette,
                      'resample': args.resample, 'preview': mode},
         'contact_sheet': str(sheet) if sheet else None,
         'frames_sheet': str(frames) if frames else None,
