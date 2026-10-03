@@ -9,6 +9,7 @@ Needs Pillow (pip install pillow). Run with --help for the options.
 """
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -32,6 +33,8 @@ KMEANS = 8
 # Up to this many inputs get a before-and-after preview each; more get one
 # contact sheet.
 EACH_PREVIEW_MAX = 3
+# The face detector for --frame face (YuNet, MIT licence, models/LICENSE-yunet.txt).
+FACE_MODEL = Path(__file__).resolve().parent.parent / 'models' / 'face_detection_yunet_2023mar.onnx'
 INPUT_TYPES = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif', '.tif', '.tiff'}
 
 # Text in metadata that points to an image generator or service.
@@ -116,24 +119,125 @@ def inspect(path, im):
     }
 
 
-def crop(im, box=None, aspect=None, focus=(0.5, 0.5), zoom=1.0):
-    """A box of the picture; or the largest part of it with the given aspect,
-    then 1/zoom of that each way, both around the focus point. One --zoom
+def centre_box(size, aspect=None, focus=(0.5, 0.5), zoom=1.0):
+    """The largest part of the picture with the given aspect, then 1/zoom of
+    that each way, both around the focus point, as [x, y, w, h]. One --zoom
     frames a whole batch of portraits made alike, with no box per picture."""
-    if box:
-        x, y, w, h = box
-        return im.crop((x, y, min(x + w, im.width), min(y + h, im.height)))
-    w, h = im.size
+    w, h = size
     if aspect:
         cw, ch = (round(h * aspect), h) if w / h > aspect else (w, round(w / aspect))
     else:
         cw, ch = w, h
     cw, ch = max(1, round(cw / zoom)), max(1, round(ch / zoom))
-    if (cw, ch) == (w, h):
-        return im
     x = min(max(0, round(focus[0] * w - cw / 2)), w - cw)
     y = min(max(0, round(focus[1] * h - ch / 2)), h - ch)
-    return im.crop((x, y, x + cw, y + ch))
+    return [x, y, cw, ch]
+
+
+def crop(im, box):
+    """The picture within box [x, y, w, h], clipped to the picture."""
+    x, y, w, h = box
+    if [x, y, w, h] == [0, 0, im.width, im.height]:
+        return im
+    return im.crop((x, y, min(x + w, im.width), min(y + h, im.height)))
+
+
+def face_detector():
+    """A function finding the most likely face in a picture, as (x, y, w, h,
+    score), or None. Needs OpenCV."""
+    os.environ.setdefault('OPENCV_LOG_LEVEL', 'ERROR')
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        sys.exit('--frame face needs OpenCV: pip install opencv-python-headless')
+    if not FACE_MODEL.exists():
+        sys.exit(f'the face model is missing: {FACE_MODEL}')
+    detectors = {}
+
+    def find(im):
+        # Detect on a copy at most 640 wide, then scale back.
+        k = min(1.0, 640 / max(im.size))
+        small = im.convert('RGB').resize((max(1, round(im.width * k)), max(1, round(im.height * k))))
+        if small.size not in detectors:
+            detectors[small.size] = cv2.FaceDetectorYN.create(str(FACE_MODEL), '', small.size, 0.6, 0.3, 5000)
+        _, faces = detectors[small.size].detect(np.asarray(small)[:, :, ::-1].copy())
+        if faces is None or not len(faces):
+            return None
+        best = max(faces, key=lambda r: r[2] * r[3] * r[14])
+        x, y, w, h = (float(v) / k for v in best[:4])
+        return x, y, w, h, float(best[14])
+    return find
+
+
+def around_face(face, size, aspect, fill):
+    """A box around a face: the face's larger side is `fill` of the box's
+    width, and the box sits a little low, for chin and beard; kept inside the
+    picture, and shrunk to fit if it must."""
+    x, y, w, h = face[:4]
+    W, H = size
+    cw = max(w, h) / fill
+    ch = cw / aspect
+    k = min(1.0, W / cw, H / ch)
+    cw, ch = max(1, round(cw * k)), max(1, round(ch * k))
+    cx, cy = x + w / 2, y + h / 2 + 0.06 * ch
+    bx = min(max(0, round(cx - cw / 2)), W - cw)
+    by = min(max(0, round(cy - ch / 2)), H - ch)
+    return [bx, by, cw, ch]
+
+
+def frames_sheet(jobs, path, thumb=160, columns=8):
+    """Each picture, small, with the box it was cropped to: framing to check in one look."""
+    columns = min(columns, len(jobs))
+    rows = (len(jobs) + columns - 1) // columns
+    sheet = Image.new('RGB', (columns * (thumb + 4), rows * (thumb + 4)), (255, 255, 255))
+    for n, job in enumerate(jobs):
+        im = job['source']
+        k = thumb / max(im.size)
+        th = im.convert('RGB').resize((max(1, round(im.width * k)), max(1, round(im.height * k))))
+        draw = ImageDraw.Draw(th)
+        bx, by, bw, bh = job['box']
+        draw.rectangle([bx * k, by * k, (bx + bw) * k, (by + bh) * k], outline=(255, 0, 0), width=2)
+        draw.text((3, 2), job['file'].stem[:18], fill=(255, 255, 0))
+        sheet.paste(th, ((n % columns) * (thumb + 4), (n // columns) * (thumb + 4)))
+    sheet.save(path, quality=85)
+
+
+def exact_palette(im):
+    """An RGBA picture of at most 255 colours as an indexed one with exactly
+    those colours (and one index for clear), else as it is."""
+    colours = im.getcolors(256) or []
+    opaque = [c[:3] for _, c in colours if c[3] == 255]
+    clear = any(c[3] == 0 for _, c in colours)
+    if not colours or len(opaque) + clear > 256 or any(0 < c[3] < 255 for _, c in colours):
+        return im
+    pal = Image.new('P', (1, 1))
+    pal.putpalette([v for c in opaque for v in c] + [0, 0, 0] * (256 - len(opaque)))
+    q = im.convert('RGB').quantize(palette=pal, dither=Image.Dither.NONE)
+    if clear:
+        index = len(opaque)
+        px, alpha = q.load(), im.getchannel('A').load()
+        for y in range(q.height):
+            for x in range(q.width):
+                if alpha[x, y] == 0:
+                    px[x, y] = index
+        q.info['transparency'] = index
+    return q
+
+
+def atlas(results, cols, rows, path):
+    """The results packed in a grid, in order, each cell the size of the
+    largest: a sprite sheet for the page to cut up."""
+    cw = max(img.width for _, img in results)
+    ch = max(img.height for _, img in results)
+    sheet = Image.new('RGBA', (cols * cw, rows * ch), (0, 0, 0, 0))
+    cells = []
+    for n, (name, img) in enumerate(results[:cols * rows]):
+        x, y = (n % cols) * cw, (n // cols) * ch
+        sheet.paste(img.convert('RGBA'), (x, y))
+        cells.append({'name': name, 'col': n % cols, 'row': n // cols, 'x': x, 'y': y})
+    exact_palette(sheet).save(path, optimize=True)
+    return {'file': str(path), 'cell': [cw, ch], 'grid': [cols, rows], 'cells': cells}
 
 
 def fit(size, aspect):
@@ -294,6 +398,10 @@ def main(argv=None):
     shape.add_argument('--focus', type=parse_focus, default=(0.5, 0.5), help='centre of an --aspect crop, as x,y from 0 to 1 (default 0.5,0.5)')
     shape.add_argument('--zoom', type=float, default=1.0, help='keep the middle 1/ZOOM each way, around --focus (after --aspect): 1.6 frames a face in a head-and-shoulders portrait')
     shape.add_argument('--box', type=parse_box, help='crop to x,y,width,height in the picture\'s pixels')
+    shape.add_argument('--frame', choices=['center', 'face'], default='center',
+                       help='face: crop around the face each picture shows (needs OpenCV; square unless --aspect); center: --aspect, --zoom and --focus (default)')
+    shape.add_argument('--face-fill', type=float, default=0.6, help='with --frame face, how much of the crop\'s width the face takes (default 0.6)')
+    shape.add_argument('--crops', help='a JSON file of boxes per picture, {"name.png": [x, y, w, h]}, used before any other framing; each run writes the boxes it used to OUT/crops.json')
     look = ap.add_argument_group('look')
     look.add_argument('--colors', type=int, default=32, help='palette size, 2 to 256 (default 32)')
     look.add_argument('--boost', choices=BOOST, default='mild', help='lift colour and contrast after shrinking: none keeps them true, strong gives old games\' pop (default mild)')
@@ -304,13 +412,18 @@ def main(argv=None):
     look.add_argument('--resample', choices=['lanczos', 'box'], default='lanczos', help='how pixels are averaged when shrinking: lanczos keeps edges sharper, box is smoother (default lanczos)')
     output = ap.add_argument_group('output')
     output.add_argument('--scale', type=int, default=1, help='also save each result scaled up this many times, for places without CSS scaling')
+    output.add_argument('--atlas', type=parse_size, help='also pack the results, in name order, into one COLSxROWS sprite sheet (atlas.png), cells listed in the report')
     output.add_argument('--preview', choices=['auto', 'each', 'sheet', 'none'], default='auto',
                         help=f'before-and-after per picture, one contact sheet, or none; auto: each up to {EACH_PREVIEW_MAX} pictures, else a sheet')
     args = ap.parse_args(argv)
     if not 2 <= args.colors <= 256:
         ap.error('--colors must be from 2 to 256')
-    if args.box and (args.aspect or args.zoom != 1.0):
-        ap.error('use --box, or --aspect and --zoom, not both')
+    if args.box and (args.aspect or args.zoom != 1.0 or args.frame == 'face'):
+        ap.error('use --box, or --aspect, --zoom and --frame, not both')
+    if not 0.1 <= args.face_fill <= 1:
+        ap.error('--face-fill must be from 0.1 to 1')
+    if args.atlas and (args.atlas[0] is None or args.atlas[1] is None):
+        ap.error('--atlas needs COLSxROWS, such as 8x8')
     if args.zoom < 1:
         ap.error('--zoom must be 1 or more')
     if args.save_palette and len(inputs_of(args.inputs)) > 1 and not (args.shared_palette or args.palette):
@@ -321,14 +434,33 @@ def main(argv=None):
     out.mkdir(parents=True, exist_ok=True)
     resample = Image.LANCZOS if args.resample == 'lanczos' else Image.BOX
 
+    crops = {}
+    if args.crops:
+        crops = json.loads(Path(args.crops).read_text())
+    find_face = face_detector() if args.frame == 'face' else None
+
     # First pass: crop, read and size each picture.
     jobs = []
     for f in files:
         with Image.open(f) as raw:
             info = inspect(f, raw)
             raw.seek(0)
-            im = raw.convert('RGBA')
-        im = crop(im, args.box, args.aspect, args.focus, args.zoom)
+            source = raw.convert('RGBA')
+        box = crops.get(f.name) or crops.get(f.stem)
+        framed = 'crops file' if box else None
+        if not box and args.box:
+            box, framed = list(args.box), 'box'
+        if not box and find_face:
+            face = find_face(source)
+            if face:
+                box = around_face(face, source.size, args.aspect or 1.0, args.face_fill)
+                framed = f'face {face[4]:.2f}'
+            else:
+                framed = 'no face found: centre'
+        if not box:
+            box = centre_box(source.size, args.aspect, args.focus, args.zoom)
+            framed = framed or ('centre' if (args.aspect or args.zoom != 1.0) else 'whole')
+        im = crop(source, box)
         aspect = im.width / im.height
         tried = None
         if args.grid:
@@ -343,7 +475,8 @@ def main(argv=None):
             how = f'automatic, {args.detail} detail'
         if size[0] > im.width or size[1] > im.height:
             print(f'note: {f.name}: a {size[0]}x{size[1]} grid is larger than the picture ({im.width}x{im.height})', file=sys.stderr)
-        jobs.append({'file': f, 'image': im, 'info': info, 'size': size, 'how': how, 'tried': tried})
+        jobs.append({'file': f, 'source': source, 'box': [int(v) for v in box], 'framed': framed,
+                     'image': im, 'info': info, 'size': size, 'how': how, 'tried': tried})
 
     for job in jobs:
         job['small'] = shrink(job['image'], job['size'], resample, args.boost)
@@ -376,6 +509,8 @@ def main(argv=None):
         report.append({
             'input': str(job['file']),
             **job['info'],
+            'framed': job['framed'],
+            'box': job['box'],
             'cropped_to': list(job['image'].size),
             'grid': list(job['size']),
             'grid_from': job['how'],
@@ -390,14 +525,24 @@ def main(argv=None):
             used |= {c[:3] for _, c in job['result'].convert('RGBA').getcolors(1 << 16) or [] if c[3] == 255}
         lines = ['#%02x%02x%02x' % c for c in sorted(used, key=lambda c: (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2], c))]
         Path(args.save_palette).write_text('\n'.join(lines) + '\n')
-    sheet = None
+    (out / 'crops.json').write_text(json.dumps({j['file'].name: j['box'] for j in jobs}, indent=1))
+    sheet = frames = packed = None
     if mode == 'sheet':
         sheet = out / 'contact-sheet.png'
         contact_sheet([(j['file'].stem, j['result']) for j in jobs], sheet)
+        frames = out / 'frames.jpg'
+        frames_sheet(jobs, frames)
+    if args.atlas:
+        packed = atlas([(j['file'].stem, j['result']) for j in jobs], args.atlas[0], args.atlas[1], out / 'atlas.png')
+        if len(jobs) > args.atlas[0] * args.atlas[1]:
+            print(f'note: {len(jobs)} pictures, but the atlas holds {args.atlas[0] * args.atlas[1]}', file=sys.stderr)
     summary = {
         'settings': {'colors': args.colors, 'boost': args.boost, 'dither': args.dither, 'palette': 'shared' if palette is not None and not args.palette else args.palette,
                      'resample': args.resample, 'preview': mode},
         'contact_sheet': str(sheet) if sheet else None,
+        'frames_sheet': str(frames) if frames else None,
+        'crops': str(out / 'crops.json'),
+        'atlas': packed,
         'palette_saved': args.save_palette,
         'images': report,
     }

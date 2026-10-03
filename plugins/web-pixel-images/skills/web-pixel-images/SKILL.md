@@ -14,7 +14,9 @@ this skill's folder, does the work.
 ## Steps
 
 1. **Pillow.** `python3 -c "import PIL"`; if that fails, `pip install pillow`
-   (it needs the network; if there is none, say so and stop).
+   (it needs the network; if there is none, say so and stop). Framing
+   around faces (`--frame face`) also needs OpenCV:
+   `pip install opencv-python-headless`; the face model comes with this skill.
 2. **Ask only what's missing, once.**
    - **The grid** (size in real pixels), if the person has one in mind. To
      start from, as old games did: a face 8 × 8 (an icon) to 16 × 16 (a
@@ -33,6 +35,14 @@ this skill's folder, does the work.
        the face. Pictures made alike can share one setting, with no box per
        picture.
      - `--box x,y,w,h` frames one picture exactly.
+     - **Portraits whose faces sit in different places** (close-ups,
+       torso shots, off-centre): `--frame face` finds each face and crops a
+       square around it (`--aspect` for another shape; `--face-fill 0.6` is
+       how much of the width the face takes). Check `frames.jpg`, which shows
+       every picture with its box. Fix any wrong box in `OUT/crops.json`, then
+       run again with `--crops OUT/crops.json`. Listed boxes win; the rest
+       are framed as asked. A picture with no face found falls back to the
+       centre crop, and the report says so.
 3. **Look at the project.** Where will the images show: a web page, a
    canvas game, a favicon, a link preview? That decides the output (below).
    Look for a credits file (CREDITS.md, ATTRIBUTION, credits beside the
@@ -49,12 +59,18 @@ this skill's folder, does the work.
      person wants that look, best with `--dither floyd`.
    - For portraits shown small (32–64 px on screen), a 32 × 32 grid is a
      good start.
+   - `--atlas 8x8` also packs the results, in file-name order, into one
+     sprite sheet (`atlas.png`), with each cell's place in the report: one
+     request for the page instead of 64. 64 faces of 32 × 32 come to about
+     20–25 KB.
 5. **Run it**, into a scratch folder first:
 
    ```
    python3 <skill>/scripts/pixelate.py photo.png --out /tmp/px --grid 16x16 --aspect 1:1
    python3 <skill>/scripts/pixelate.py faces/ --out /tmp/px --grid 32 --zoom 1.6 --focus 0.5,0.45 \
        --colors 12 --shared-palette --save-palette assets/portraits/palette.hex
+   python3 <skill>/scripts/pixelate.py faces/ --out /tmp/px --frame face --grid 32 \
+       --colors 12 --shared-palette --atlas 8x8
    python3 <skill>/scripts/pixelate.py banner.jpg --out /tmp/px --display 520 --block 4
    ```
 
@@ -64,8 +80,11 @@ this skill's folder, does the work.
 6. **Check before handing over.**
    - Up to 3 pictures: look at each `*.preview.png` (the picture beside its
      result) and show them.
-   - A batch: the script makes one `contact-sheet.png` instead. Show only
-     that, once. If the person doesn't want previews, `--preview none`.
+   - A batch: the script makes one `contact-sheet.png` instead (and
+     `frames.jpg`, the crops). Show only the contact sheet, or the atlas
+     scaled up, once; look at `frames.jpg` yourself. If the person doesn't
+     want previews, `--preview none`. Raw pictures sent in chat may arrive
+     renamed by number: keep a list of which upload became which file.
    - **Tune:**
      - mushy or blurred: a smaller grid, or `--boost strong`;
      - details lost: a larger grid;
@@ -114,6 +133,8 @@ fits) for a copy already scaled up by whole pixels.
 - `--display WxH` with `--block N`: grid from display size; `--detail`: the
   automatic grid's level.
 - `--aspect W:H`, `--zoom Z`, `--focus x,y`, `--box x,y,w,h`: crop first.
+- `--frame face`, `--face-fill F`; `--crops FILE` (boxes per picture, JSON).
+- `--atlas COLSxROWS`: a sprite sheet of the results.
 - `--colors N` (2–256, default 32).
 - `--boost none|mild|strong` (default mild): colour and contrast after
   shrinking, which averages colours toward mud.

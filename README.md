@@ -14,9 +14,13 @@ The repository is a Claude Code plugin marketplace: each plugin under
   AI-generated images) into small, web-ready pixelated images with an
   old-game look. It crops, shrinks to a coarse grid of real pixels (a
   16 × 16 face, a 128-wide banner), limits the palette, strips metadata, and
-  saves tiny PNGs: a 32 × 32 face is about 550 bytes. A set (hero faces,
-  icons) gets one framing and one small palette, saved for later
-  additions, and one contact sheet instead of a preview each. It also asks
+  saves tiny PNGs: a 32 × 32 face is about 450 bytes. For a set (hero
+  faces, icons) it can frame each picture around its face, gives all one
+  small palette, saved for later additions, packs them into a sprite sheet
+  (64 faces in about 22 KB), and makes one contact sheet instead of a
+  preview each. The face detector is
+  [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)
+  (MIT licence, in the skill's `models/`), run with OpenCV. It also asks
   which licence applies and adds credit lines. Needs Python 3 with Pillow.
   Ask Claude to "pixelate this image for the web", or for "16 × 16 pixel
   portraits of these faces".

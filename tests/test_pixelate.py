@@ -102,6 +102,37 @@ class Pixelate(unittest.TestCase):
         out = load(run(later, '--out', self.dir / 'o2', '--grid', '16', '--palette', saved)['images'][0]['outputs'][0])
         self.assertTrue({c for _, c in out.convert('RGB').getcolors()} <= colours)
 
+    def test_crops_file_and_atlas(self):
+        for n in range(4):
+            picture(self.dir / f'p{n}.png', size=(200, 100), seed=n)
+        crops = self.dir / 'crops.json'
+        crops.write_text(json.dumps({'p1.png': [10, 10, 50, 50], 'p2': [0, 0, 100, 100]}))
+        report = run(self.dir, '--out', self.dir / 'o', '--crops', crops, '--grid', '10', '--colors', '6',
+                     '--shared-palette', '--atlas', '2x2', '--preview', 'none')
+        by = {Path(r['input']).name: r for r in report['images']}
+        self.assertEqual(by['p1.png']['box'], [10, 10, 50, 50])
+        self.assertEqual(by['p1.png']['framed'], 'crops file')
+        self.assertEqual(by['p2.png']['box'], [0, 0, 100, 100])
+        self.assertEqual(by['p0.png']['framed'], 'whole')
+        # The boxes used come back as a file to edit and run again.
+        self.assertEqual(json.loads(Path(report['crops']).read_text())['p1.png'], [10, 10, 50, 50])
+        sheet = load(report['atlas']['file'])
+        self.assertEqual(report['atlas']['cell'], [10, 10])
+        self.assertEqual(sheet.size, (20, 20))
+        self.assertEqual(sheet.mode, 'P')
+        third = load(by['p2.png']['outputs'][0]).convert('RGB')
+        self.assertEqual(sheet.convert('RGB').crop((0, 10, 10, 20)).tobytes(), third.tobytes())
+
+    def test_face_framing_falls_back_to_the_centre(self):
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            self.skipTest('OpenCV is not installed')
+        src = picture(self.dir / 'a.png', size=(300, 200))
+        r = run(src, '--out', self.dir / 'o', '--frame', 'face', '--grid', '8', '--aspect', '1:1')['images'][0]
+        self.assertEqual(r['framed'], 'no face found: centre')
+        self.assertEqual(r['cropped_to'], [200, 200])
+
     def test_automatic_grid_is_from_the_ladder_and_more_detail_is_finer(self):
         src = picture(self.dir / 'a.png', size=(800, 600))
         low = run(src, '--out', self.dir / 'o', '--detail', 'low')['images'][0]
