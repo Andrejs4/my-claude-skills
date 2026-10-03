@@ -6,6 +6,9 @@ layout and how a plugin is added; this file covers the rest.
 - Each plugin lives in `plugins/<plugin>/`, with `.claude-plugin/plugin.json`
   and its skills in `skills/<skill>/SKILL.md`. Every plugin is listed in
   `.claude-plugin/marketplace.json`. Start a new one from `templates/plugin/`.
+  Each skill also has a link in `.claude/skills/` (to
+  `../../plugins/<plugin>/skills/<skill>`): cloud sessions have no
+  `/plugin`, and load skills from there when this repository is attached.
 - A skill's `description` (in its frontmatter) is what Claude matches
   requests against: say what it does and the phrases that should call it, and
   what it doesn't cover.

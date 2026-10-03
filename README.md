@@ -23,7 +23,8 @@ The repository is a Claude Code plugin marketplace: each plugin under
 
 ## Using them
 
-In any project, in Claude Code:
+**On your own computer** (Claude Code in a terminal or the desktop app), in
+any project:
 
 ```
 /plugin marketplace add Andrejs4/my-claude-skills
@@ -31,6 +32,12 @@ In any project, in Claude Code:
 ```
 
 `/plugin marketplace update my-claude-skills` fetches newer versions later.
+
+**In a cloud session** (Claude Code on the web or in the app), `/plugin`
+isn't available. Add this repository to the session instead: pick it
+alongside the project when starting one, or ask Claude to "add the
+Andrejs4/my-claude-skills repository". Its skills then load from
+`.claude/skills/`, which links to each plugin's skills.
 
 A single skill can also go to claude.ai on its own: zip its folder (the one
 holding `SKILL.md`) and upload it under Settings → Capabilities → Skills.
@@ -43,6 +50,7 @@ plugins/<plugin>/
   .claude-plugin/plugin.json      the plugin's name, version, description
   skills/<skill>/SKILL.md         a skill: when to use it, and how
   skills/<skill>/scripts/         its scripts, if any
+.claude/skills/<skill>            a link to plugins/<plugin>/skills/<skill>, for cloud sessions
 templates/plugin/                 a starting point for a new plugin
 tests/                            tests for the skills' scripts
 ```
@@ -53,7 +61,8 @@ tests/                            tests for the skills' scripts
    `skills/skill-name/` to the skill's name.
 2. Fill in `plugin.json` and `SKILL.md`; the skill's `description` decides
    when Claude uses it, so name the requests it answers.
-3. List the plugin in `.claude-plugin/marketplace.json`.
+3. List the plugin in `.claude-plugin/marketplace.json`, and link each skill
+   for cloud sessions: `ln -s ../../plugins/<plugin>/skills/<skill> .claude/skills/<skill>`.
 4. Check it: `claude plugin validate --strict .` and
    `claude plugin validate --strict plugins/<plugin>`, and run the tests:
    `python3 -m unittest discover tests` (needs Pillow).
