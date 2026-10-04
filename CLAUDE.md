@@ -24,5 +24,11 @@ layout and how a plugin is added; this file covers the rest.
   `claude plugin validate --strict plugins/<plugin>` must pass, and so must
   `python3 -m unittest discover tests` (Python 3 with Pillow). A script gets
   tests in `tests/`, made on pictures the tests draw themselves.
+- No Git LFS here: a cloud session's git proxy doesn't serve LFS files, so
+  a skill would arrive with pointer files in their place. Commit models and
+  pictures as plain files (the face model is 227 KB). An LFS file from
+  elsewhere downloads from
+  `media.githubusercontent.com/media/<owner>/<repo>/<ref>/<path>`; the raw
+  address gives only the pointer.
 - Licence: GPL-2.0-or-later (README, LICENSE). Put `"license":
   "GPL-2.0-or-later"` in each `plugin.json`.

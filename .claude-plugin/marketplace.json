@@ -12,7 +12,7 @@
       "name": "web-pixel-images",
       "source": "./plugins/web-pixel-images",
       "description": "Turn ordinary pictures into small, web-ready pixelated images with an old-game look, alone or in batches, and credit them.",
-      "version": "0.4.0"
+      "version": "0.4.1"
     }
   ]
 }

@@ -67,7 +67,13 @@ this skill's folder, does the work.
      picture) and puts it on one flat colour, about 1 s a picture. A mid
      grey hides the cut-out's flaws best. `--background transparent` lets the
      page put any colour behind, but dark hair and beards can get holes that
-     show through as specks.
+     show through as specks. If the cut-out spoils a few pictures (pale
+     paintings can lose their edges), redo only those without
+     `--background`, with the same boxes and palette (`--crops
+     OUT/crops.json --palette <saved palette>`), copy them over the first
+     results, and pack the sheet again: import the script and call
+     `atlas(results, cols, rows, path)`, with `results` the `(name, image)`
+     pairs in order.
    - `--atlas 8x8` also packs the results, in file-name order, into one
      sprite sheet (`atlas.png`), with each cell's place in the report: one
      request for the page instead of 64. 64 faces of 32 × 32 come to about
